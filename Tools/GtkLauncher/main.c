@@ -46,6 +46,8 @@ static gchar * proxy;
 static bool enableBenchmarking;
 static gint windowCount = 0;
 static GtkWidget* inspector_window;
+static GtkWidget* spinner_window;
+static GtkWidget *spinner;
 
 static GtkWidget* createWindow(WebKitWebView** outWebView);
 
@@ -62,7 +64,7 @@ static void updateTitle(GtkWindow* window, WebKitWebView* webView)
 {
     GString *string = g_string_new(webkit_web_view_get_title(webView));
     gdouble loadProgress = webkit_web_view_get_progress(webView) * 100;
-    g_string_append(string, " - WebKit Launcher");
+    /*g_string_append(string, " - WebKit Launcher");*/
     if (loadProgress < 100)
         g_string_append_printf(string, " (%f%%)", loadProgress);
     gchar *title = g_string_free(string, FALSE);
@@ -70,6 +72,7 @@ static void updateTitle(GtkWindow* window, WebKitWebView* webView)
     g_free(title);
 }
 
+#if 0
 static void linkHoverCb(WebKitWebView* page, const gchar* title, const gchar* link, GtkStatusbar* statusbar)
 {
     guint statusContextId =
@@ -79,6 +82,7 @@ static void linkHoverCb(WebKitWebView* page, const gchar* title, const gchar* li
     if (link)
         gtk_statusbar_push(statusbar, statusContextId, link);
 }
+#endif
 
 static void notifyTitleCb(WebKitWebView* webView, GParamSpec* pspec, GtkWidget* window)
 {
@@ -87,12 +91,39 @@ static void notifyTitleCb(WebKitWebView* webView, GParamSpec* pspec, GtkWidget* 
 
 static void notifyLoadStatusCb(WebKitWebView* webView, GParamSpec* pspec, GtkWidget* uriEntry)
 {
-    if (webkit_web_view_get_load_status(webView) == WEBKIT_LOAD_COMMITTED) {
+#if 1
+    int status = webkit_web_view_get_load_status(webView);
+    switch(status)
+    {
+    case WEBKIT_LOAD_PROVISIONAL:
+    	break;
+    case WEBKIT_LOAD_COMMITTED:
+    {
+    	WebKitWebFrame *frame = webkit_web_view_get_main_frame(webView);
+    	const gchar *uri = webkit_web_frame_get_uri(frame);
+    	if (uri)
+    		gtk_entry_set_text(GTK_ENTRY(uriEntry), uri);
+
+    	gtk_spinner_start(GTK_SPINNER(spinner));
+    	gtk_widget_show_all(spinner_window);
+    }
+    	break;
+    case WEBKIT_LOAD_FIRST_VISUALLY_NON_EMPTY_LAYOUT:
+    	gtk_spinner_stop(GTK_SPINNER(spinner));
+    	gtk_widget_hide_all(spinner_window);
+    	break;
+    case WEBKIT_LOAD_FINISHED:
+    case WEBKIT_LOAD_FAILED:
+    	break;
+    }
+#else
+	if (webkit_web_view_get_load_status(webView) == WEBKIT_LOAD_COMMITTED) {
         WebKitWebFrame *frame = webkit_web_view_get_main_frame(webView);
         const gchar *uri = webkit_web_frame_get_uri(frame);
         if (uri)
             gtk_entry_set_text(GTK_ENTRY(uriEntry), uri);
     }
+#endif
 }
 
 static void notifyProgressCb(WebKitWebView* webView, GParamSpec* pspec, GtkWidget* window)
@@ -218,7 +249,8 @@ inspector_inspector_destroyed_cb (WebKitWebInspector* inspector)
 }
 
 
-static GtkWidget* createBrowser(GtkWidget* window, GtkWidget* uriEntry, GtkWidget* statusbar, WebKitWebView* webView)
+/* static GtkWidget* createBrowser(GtkWidget* window, GtkWidget* uriEntry, GtkWidget* statusbar, WebKitWebView* webView) */
+static GtkWidget* createBrowser(GtkWidget* window, GtkWidget* uriEntry, WebKitWebView* webView)
 {
    WebKitWebSettings *settings = webkit_web_settings_new();
    WebKitWebInspector *inspector;	
@@ -233,29 +265,31 @@ static GtkWidget* createBrowser(GtkWidget* window, GtkWidget* uriEntry, GtkWidge
 
 
 #ifndef WEBKIT2
-/*    g_signal_connect(webView, "notify::title", G_CALLBACK(notifyTitleCb), window);
+    g_signal_connect(webView, "notify::title", G_CALLBACK(notifyTitleCb), window);
     g_signal_connect(webView, "notify::load-status", G_CALLBACK(notifyLoadStatusCb), uriEntry);
     g_signal_connect(webView, "notify::progress", G_CALLBACK(notifyProgressCb), window);
-    g_signal_connect(webView, "hovering-over-link", G_CALLBACK(linkHoverCb), statusbar); */
+    /*g_signal_connect(webView, "hovering-over-link", G_CALLBACK(linkHoverCb), statusbar);*/
     g_signal_connect(webView, "create-web-view", G_CALLBACK(createWebViewCb), window);
     g_signal_connect(webView, "web-view-ready", G_CALLBACK(webViewReadyCb), window);
     g_signal_connect(webView, "close-web-view", G_CALLBACK(closeWebViewCb), window);
 #endif
 
-		 inspector = webkit_web_view_get_inspector(webView);
-		 g_signal_connect (G_OBJECT (inspector), "inspect-web-view", G_CALLBACK (create_inspector_cb), NULL);
-		 g_signal_connect (G_OBJECT (inspector), "show-window", G_CALLBACK (inspector_show_window_cb), NULL);
-		 g_signal_connect (G_OBJECT (inspector), "close-window", G_CALLBACK (inspector_close_window_cb), NULL);
-		 g_signal_connect (G_OBJECT (inspector), "attach-window", G_CALLBACK (inspector_attach_window_cb), NULL);
-		 g_signal_connect (G_OBJECT (inspector), "dettach-window", G_CALLBACK (inspector_dettach_window_cb), NULL);
-		 g_signal_connect (G_OBJECT (inspector), "destroy", G_CALLBACK (inspector_inspector_destroyed_cb), NULL);
+	inspector = webkit_web_view_get_inspector(webView);
+	g_signal_connect (G_OBJECT (inspector), "inspect-web-view", G_CALLBACK (create_inspector_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "show-window", G_CALLBACK (inspector_show_window_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "close-window", G_CALLBACK (inspector_close_window_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "attach-window", G_CALLBACK (inspector_attach_window_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "dettach-window", G_CALLBACK (inspector_dettach_window_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "destroy", G_CALLBACK (inspector_inspector_destroyed_cb), NULL);
 	
-		 g_signal_connect (G_OBJECT (inspector), "notify::inspected-uri", G_CALLBACK (inspector_uri_changed_cb), NULL);
+	g_signal_connect (G_OBJECT (inspector), "notify::inspected-uri", G_CALLBACK (inspector_uri_changed_cb), NULL);
 	
 
     return scrolledWindow;
 }
 
+
+#if 0
 static GtkWidget* createStatusbar()
 {
     GtkStatusbar *statusbar = GTK_STATUSBAR(gtk_statusbar_new());
@@ -304,14 +338,15 @@ static GtkWidget* createToolbar(GtkWidget* uriEntry, WebKitWebView* webView)
 
     return toolbar;
 }
+#endif
 
 static WebKitWebView* _webView;
 
 static gboolean expose(GtkWidget *widget, GdkEventExpose *event, gpointer userdata)
 {
-   cairo_t *cr = gdk_cairo_create(widget->window);
+    cairo_t *cr = gdk_cairo_create(widget->window);
 
-       cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.0); /* transparent */
+    cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.0); /* transparent */
 
     /* draw the background */
     cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
@@ -328,14 +363,15 @@ static GtkWidget* createWindow(WebKitWebView** outWebView)
     GtkWidget *vbox;
     GtkWidget *window;
     GtkWidget *uriEntry;
-    GtkWidget *statusbar;
+    /*GtkWidget *statusbar;*/
 
     g_atomic_int_inc(&windowCount);
 
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
     gtk_window_set_default_size(GTK_WINDOW(window), width ? width : 1280, height ? height : 720);
-    gtk_widget_set_name(window, "GtkLauncher");
+    /*gtk_widget_set_name(window, "GtkLauncher");*/
+    gtk_widget_set_name(window, "HbbTVBrowser");
 	gtk_window_set_decorated( window, FALSE );
 
 	gtk_widget_set_app_paintable(window, TRUE);
@@ -343,6 +379,10 @@ static GtkWidget* createWindow(WebKitWebView** outWebView)
 	g_signal_connect(G_OBJECT(window), "expose-event", G_CALLBACK(expose), NULL);
 
     webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
+
+    webkit_web_view_set_full_content_zoom (webView, TRUE);
+    webkit_web_view_set_zoom_level(webView, (gdouble) width/1280);
+    
     uriEntry = gtk_entry_new();
 
 #ifdef GTK_API_VERSION_2
@@ -352,14 +392,15 @@ static GtkWidget* createWindow(WebKitWebView** outWebView)
 #endif
 /*    statusbar = createStatusbar(webView); */
 /*    gtk_box_pack_start(GTK_BOX(vbox), createToolbar(uriEntry, webView), FALSE, FALSE, 0); */
-      gtk_box_pack_start(GTK_BOX(vbox), createBrowser(window, uriEntry, statusbar, webView), TRUE, TRUE, 0); 
+/*    gtk_box_pack_start(GTK_BOX(vbox), createBrowser(window, uriEntry, statusbar, webView), TRUE, TRUE, 0);*/
+    gtk_box_pack_start(GTK_BOX(vbox), createBrowser(window, uriEntry, webView), TRUE, TRUE, 0);
 /*    gtk_box_pack_start(GTK_BOX(vbox), statusbar, FALSE, FALSE, 0); */
 
     gtk_container_add(GTK_CONTAINER(window), vbox);
 
     g_signal_connect(window, "destroy", G_CALLBACK(destroyCb), NULL);
 
-	_webView = webView;
+    _webView = webView;
 
     if (outWebView)
         *outWebView = webView;
@@ -509,7 +550,7 @@ static gboolean addWebSettingsGroupToContext(GOptionContext *context, WebKitWebS
 }
 #endif
 
-void init_remote();
+/*(void init_remote();*/
 void show_stackframe( int sig );
 extern GTlsDatabase*                g_tls_file_database_gnutls_new                   (const gchar *anchor_file);
 static GtkWidget *main_window ;
@@ -754,13 +795,36 @@ int main(int argc, char* argv[])
 
     webkit_set_cache_model(WEBKIT_CACHE_MODEL_DOCUMENT_BROWSER);
 
+#if 1
+    spinner_window = gtk_window_new(GTK_WINDOW_POPUP);
+    gtk_window_set_position(GTK_WINDOW(spinner_window), GTK_WIN_POS_NONE);
+    if ((width > 1280) && (height > 720)) 
+    {
+        gtk_window_set_default_size(GTK_WINDOW(spinner_window), 60, 60);
+        gtk_window_move(spinner_window, 120, 90);
+    }
+    else
+    {
+        gtk_window_set_default_size(GTK_WINDOW(spinner_window), 40, 40);
+        gtk_window_move(spinner_window, 80, 60);
+    }
+
+
+    gtk_widget_set_name(spinner_window, "spinner");
+    gtk_window_set_decorated( spinner_window, FALSE );
+    gtk_widget_set_app_paintable(spinner_window, TRUE);
+    /*gtk_window_set_opacity(spinner_window, 0.5);*/
+
+    spinner = gtk_spinner_new ();
+    gtk_container_add (GTK_CONTAINER (spinner_window), spinner);
+#endif
     const gchar *uri = (uriArguments ? uriArguments[0] : "http://www.google.com/");
     gchar *fileURL = filenameToURL(uri);
 
     webkit_web_view_load_uri(webView, fileURL ? fileURL : uri);
     g_free(fileURL);
 
-	init_remote();
+	/*init_remote();*/
 
 	{
 /*	struct sigaction sa;
@@ -782,6 +846,7 @@ int main(int argc, char* argv[])
 	signal( SIGPIPE, SIG_IGN );
 	}
 
+	gtk_widget_hide_all(spinner_window);
     gtk_widget_grab_focus(GTK_WIDGET(webView));
     gtk_widget_show_all(main_window);
     gtk_main();
@@ -791,6 +856,8 @@ int main(int argc, char* argv[])
 
 #define LOG_ERR( a... ) { fprintf( stderr, "ERR - " ); fprintf( stderr, ##a ); fprintf( stderr, "\n" ); }
 #define LOG_TRACE( a... ) { fprintf( stderr, "TRACE - " ); fprintf( stderr, ##a ); fprintf( stderr, "\n" ); }
+
+#if 0
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -1442,6 +1509,8 @@ void init_remote()
 	pthread_t pthreadId2;
 	pthread_create( &pthreadId2, NULL, CmdThread, NULL );
 }
+
+#endif
 
 void show_stackframe( int sig ) {
   void *trace[16];
